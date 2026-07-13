@@ -14,6 +14,24 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
 
 
 def retrieve(query: str, top_k: int = 6) -> str:
+    """Retrieve the most relevant code snippets for a natural-language query.
+
+    Encodes ``query`` into an embedding with the SentenceTransformer model,
+    performs a vector similarity search against the ``devwhisper`` Qdrant
+    collection, and formats the top matches into a human-readable context
+    string. For each match it reports the source file, the detected function
+    name (parsed from the first ``def`` line in the snippet), the starting
+    line number, and the code itself.
+
+    Args:
+        query: The natural-language search query to find relevant code for.
+        top_k: The maximum number of matching snippets to return. Defaults to 6.
+
+    Returns:
+        A newline-separated string containing the formatted results. Each
+        result includes its rank, file path, function name, start line, and
+        code block. Returns an empty string if no matches are found.
+    """
     vector = embedder.encode(query).tolist()
 
     results = client.query_points(
