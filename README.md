@@ -146,6 +146,22 @@ GROQ\_API\_KEY=your\_groq\_api\_key
 
 
 
+## 🧪 Testing Locally
+
+You can test DevWhisper's conversation flow directly from your terminal without using Vapi or making voice calls by using the standalone test client. This is useful for local development and debugging.
+
+1. Ensure your FastAPI server is running: `uvicorn main:app --reload --port 8000`
+2. Run the test client in interactive mode:
+   ```bash
+   python test_client.py
+   ```
+3. Or pass a one-off query:
+   ```bash
+   python test_client.py --query "What does the preprocess function do?"
+   ```
+
+---
+
 ## 📁 Project Structure
 
 
