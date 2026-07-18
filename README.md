@@ -121,6 +121,7 @@ Developer hears the response
    ```bash
    uvicorn main:app --reload --port 8000
    ```
+3. Create a `.env` file in the root folder:`cp ./.env.example ./.env`
 
 8. **Expose it publicly**
    ```bash

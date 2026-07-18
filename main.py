@@ -1,11 +1,16 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from retriever import retrieve, embedder
+from fastapi.staticfiles import StaticFiles
+from retriever import retrieve, embedder, client as qdrant_client
 from llm import generate_response
+from cache import get as cache_get, put as cache_put
+from handlers import route_command
 import json
 import time
 
 app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Per-session memory store ---
 # { session_id: {"history": [...], "last_used": <timestamp>} }
@@ -18,6 +23,16 @@ MAX_HISTORY_PER_SESSION = 5
 async def startup_event():
     embedder.encode("warmup query")
     print("Embedder warmed up and ready!")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("Shutting down DevWhisper server...")
+    try:
+        qdrant_client.close()
+        print("Qdrant client connection closed successfully.")
+    except Exception as e:
+        print(f"Error during Qdrant client connection cleanup: {e}")
 
 
 def _get_session_id(message: dict) -> str:
@@ -123,7 +138,7 @@ async def vapi_webhook(request: Request):
 
                 # FIX: handle string JSON params
                 params = fn.get("arguments") or fn.get("parameters") or {}
-                
+
                 if isinstance(params, str):
                     try:
                         params = json.loads(params)
@@ -146,9 +161,29 @@ async def vapi_webhook(request: Request):
     "message": "Sorry, I didn't understand that command. Try rephrasing."
 })
 
+                    # --- Cache lookup ---
+                    # Attempt to serve the response from cache. This skips
+                    # retrieval and LLM generation entirely on a hit.
+                    cached = cache_get(query)
+                    if cached is not None:
+                        # Still update conversation memory on cache hit so
+                        # the session history stays consistent.
+                        update_memory(session_id, query, cached)
+                        results.append({
+                            "toolCallId": tool.get("id", "single"),
+                            "result": cached
+                        })
+                        continue
+
+                    # --- Cache miss: run full pipeline ---
                     context = retrieve(query)
                     history = get_memory(session_id)
-                    answer = generate_response(query, context, history)
+                    answer = route_command(query, session_id) or generate_response(query, context, history)
+
+                    # --- Cache insertion ---
+                    # Only cache successful, non-empty responses.
+                    if answer and answer.strip():
+                        cache_put(query, answer)
 
                     update_memory(session_id, query, answer)
 
@@ -173,4 +208,4 @@ async def vapi_webhook(request: Request):
 
 @app.get("/health")
 def health():
-    return {"status": "DevWhisper is running"}
+    return {"status": "ok", "message": "DevWhisper is running"}
